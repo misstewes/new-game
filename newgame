@@ -1,0 +1,829 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tower of Wikatung</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            color: #333;
+            padding: 20px;
+        }
+        #game-container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: #fff;
+            padding: 20px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+        }
+        #story {
+            margin-bottom: 20px;
+            font-size: 1.2em;
+            line-height: 1.6;
+        }
+        #choices {
+            margin-top: 20px;
+        }
+        #choices button {
+            display: block;
+            margin-bottom: 10px;
+            padding: 10px;
+            background: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+            border-radius: 5px;
+            font-size: 1em;
+            transition: background 0.3s;
+        }
+        #choices button:hover {
+            background: #0056b3;
+        }
+        #python-challenge, #tutorial {
+            margin-top: 20px;
+            padding: 10px;
+            background: #f8f9fa;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        #python-output {
+            margin-top: 10px;
+            background: #e9ecef;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        #score {
+            margin-top: 20px;
+            padding: 10px;
+            background: #e9ecef;
+            border: 1px solid #ccc;
+            text-align: right;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <div id="story"></div>
+        <div id="choices"></div>
+        <div id="tutorial"></div>
+        <div id="python-challenge"></div>
+        <div id="python-output"></div>
+        <div id="score"></div>
+    </div>
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            startGame();
+        });
+
+        const gameState = {
+            currentScene: "characterSelect",
+            inventory: [],
+            health: 100,
+            sanity: 100,
+            xp: 0,
+            level: 1,
+            hasDarkMagic: false,
+            hasLantern: false,
+            wikatungAnger: 0,
+            score: 0
+        };
+
+        const characters = {
+            warrior: { health: 120, sanity: 80 },
+            mage: { health: 80, sanity: 120, hasDarkMagic: true },
+            scholar: { health: 100, sanity: 100, inventory: ["Book of Lore"] }
+        };
+
+        const scenes = {
+            characterSelect: {
+                story: [
+                    "Before you embark on this perilous journey, choose your path:",
+                    "1. The Warrior: Strong and resilient, but wary of the unknown.",
+                    "2. The Mage: Wields powerful magic, but treads a delicate path with sanity.",
+                    "3. The Scholar: Wise and resourceful, with a thirst for knowledge."
+                ],
+                choices: [
+                    { text: "Choose Warrior", action: "chooseCharacter", character: "warrior", nextScene: "start" },
+                    { text: "Choose Mage", action: "chooseCharacter", character: "mage", nextScene: "start" },
+                    { text: "Choose Scholar", action: "chooseCharacter", character: "scholar", nextScene: "start" }
+                ]
+            },
+            start: {
+                story: [
+                    "You awaken in a cold sweat, the name 'Wikatung' echoing in your mind...",
+                    "Around you lies the remnants of an expedition - all deceased. Their faces are frozen in expressions of terror.",
+                    "Your hand instinctively clutches a worn piece of parchment, the single word 'Wikatung' scrawled upon it."
+                ],
+                choices: [
+                    { text: "Search the bodies for clues.", nextScene: "searchBodies" },
+                    { text: "Examine your surroundings.", nextScene: "examineCave" }
+                ]
+            },
+            searchBodies: {
+                story: [
+                    "You cautiously search the bodies, a chill running down your spine.",
+                    "One body clutches a tattered journal. You pry it open, hoping for answers.",
+                    "Another body has a rusty dagger and a lantern. You take them, they might come in handy."
+                ],
+                action: "gainItems",
+                items: ["Tattered Journal", "Rusty Dagger", "Lantern"],
+                nextScene: "readJournal"
+            },
+            examineCave: {
+                story: [
+                    "The cave is damp and oppressive. Glowing fungi cast an eerie light.",
+                    "You notice a passage hidden behind a crumbling wall section."
+                ],
+                choices: [
+                    { text: "Try to move the rubble. (Strength Check)", action: "strengthCheck", nextSceneSuccess: "hiddenPassage", nextSceneFail: "passageBlocked" },
+                    { text: "Return and search the bodies.", nextScene: "searchBodies" }
+                ]
+            },
+            passageBlocked: {
+                story: "You push against the rubble, but it won't budge. You need to find another way.",
+                choices: [
+                    { text: "Return and search the bodies.", nextScene: "searchBodies" }
+                ]
+            },
+            readJournal: {
+                story: [
+                    "'Wikatung is the key... his power binds us here...' the journal reads.",
+                    "'Only by gathering the artifacts of the ancients can we break free... But beware, Wikatung is easily angered. His rage could bring this whole tower down upon us!'"
+                ],
+                choices: [
+                    { text: "Examine the cave more closely.", nextScene: "examineCave" }
+                ]
+            },
+            hiddenPassage: {
+                story: "You squeeze through the passage, entering a large cavern...",
+                choices: [
+                    { text: "Continue deeper into the cavern.", nextScene: "ancientAltar" }
+                ]
+            },
+            ancientAltar: {
+                story: "You stumble upon an ancient altar, etched with glowing runes. You sense a powerful presence.",
+                choices: [
+                    { text: "Approach cautiously.", nextScene: "approachAltar" },
+                    { text: "Use Dark Magic to try and understand the runes. (Sanity -10, Wikatung Anger +20)", nextScene: "useDarkMagic", sanityChange: -10, angerChange: 20, requires: "hasDarkMagic" },
+                    { text: "Avoid the altar.", nextScene: "avoidAltar" }
+                ]
+            },
+            approachAltar: {
+                story: [
+                    "As you approach, a spectral figure rises from the altar. It speaks in a raspy voice...",
+                    "'Only those worthy may pass. Solve my riddle, mortal.'"
+                ],
+                choices: [
+                    { text: "Attempt the riddle.", nextScene: "pythonChallenge1" }
+                ]
+            },
+            useDarkMagic: {
+                story: [
+                    "You channel dark energy, whispering forbidden words. The runes pulsate...",
+                    "You glean a sense of the altar's purpose - it's a gateway, but guarded.",
+                    "You feel a surge of power, but also a growing unease. Wikatung doesn't like this..."
+                ],
+                sanityChange: -10,
+                angerChange: 20,
+                choices: [
+                    { text: "Approach the altar.", nextScene: "approachAltar" }
+                ]
+            },
+            avoidAltar: {
+                story: "You decide to avoid the altar for now. You can always come back later.",
+                choices: [
+                    { text: "Go back through the hidden passage.", nextScene: "hiddenPassage" }
+                ]
+            },
+            pythonChallenge1: {
+                story: "'I am always coming but never arrive, I am always near but never here. What am I?'",
+                pythonConcept: [
+                    "Python Refresher: Strings are sequences of characters. You can access individual characters using indexing (e.g., my_string[0] for the first character).",
+                    "Strings are immutable, meaning you cannot change them directly. You can create new strings using concatenation or other string methods."
+                ],
+                tutorial: [
+                    "To solve this challenge, we need to write a Python function that takes a string and returns the first character.",
+                    "Here's how you can create a function in Python:",
+                    "```python",
+                    "def first_character(text):",
+                    "    return text[0]",
+                    "```",
+                    "In this function, text is the parameter, and we return the first character using text[0]."
+                ],
+                challenge: "Challenge: Write a Python function that takes a string and returns the first character.",
+                choices: [
+                    {
+                        text: "Attempt the riddle (type your code):",
+                        action: "pythonChallenge",
+                        code: "",
+                        correctAnswer: function(text) { return text[0]; },
+                        nextSceneSuccess: "riddleSolved1",
+                        nextSceneFail: "riddleFailed1"
+                    },
+                    {
+                        text: "Need a hint? (Sanity -10)",
+                        sanityChange: -10,
+                        nextScene: "hintRiddle1"
+                    },
+                    {
+                        text: "Skip this puzzle. (Lose 'Book of Lore')",
+                        requires: "Book of Lore",
+                        action: "removeItem",
+                        item: "Book of Lore",
+                        nextScene: "riddleSolved1"
+                    }
+                ]
+            },
+            hintRiddle1: {
+                story: "Hint: Remember that string indices start from 0 in Python. The first character is at index 0.",
+                choices: [
+                    { text: "Go back and attempt the riddle.", nextScene: "pythonChallenge1" }
+                ]
+            },
+            riddleSolved1: {
+                story: "'Impressive,' the figure rasps. 'You have proven your wit. You may pass.' The altar glows, revealing a staircase leading upwards.",
+                xpChange: 50,
+                scoreChange: 10,
+                choices: [
+                    { text: "Ascend the staircase.", nextScene: "towerFloor2" }
+                ]
+            },
+            riddleFailed1: {
+                story: "'Incorrect! Your mind is dull. Prepare to face the consequences!' The figure lunges at you!",
+                action: "combat",
+                enemy: "Spectral Guardian",
+                nextSceneSuccess: "riddleSolved1",
+                nextSceneFail: "gameOver"
+            },
+            towerFloor2: {
+                story: [
+                    "You emerge onto the second floor of the tower. The air is heavy with the scent of decay.",
+                    "A faint light flickers in the distance. You hear shuffling sounds."
+                ],
+                choices: [
+                    { text: "Investigate the light.", nextScene: "investigateLight" },
+                    { text: "Search the floor for other exits.", nextScene: "searchFloor2" }
+                ]
+            },
+            investigateLight: {
+                story: [
+                    "As you approach the light, you see it comes from a lantern sitting on a pedestal.",
+                    "Beside the lantern lies a scroll, its surface covered in arcane symbols."
+                ],
+                choices: [
+                    { text: "Take the lantern and read the scroll.", nextScene: "readScroll" },
+                    { text: "Leave the lantern and scroll and continue searching.", nextScene: "searchFloor2" }
+                ]
+            },
+            readScroll: {
+                story: [
+                    "You pick up the lantern. It feels warm to the touch, as if recently lit.",
+                    "The scroll speaks of a hidden chamber on this floor, accessible only by those who possess the light.",
+                    "A riddle is inscribed beneath the main text: 'I have cities, but no houses; forests, but no trees; water, but no fish. What am I?'"
+                ],
+                action: "gainItem",
+                item: "Warm Lantern",
+                nextScene: "pythonChallenge2"
+            },
+            pythonChallenge2: {
+                story: "You ponder the riddle, sensing it holds the key to the hidden chamber.",
+                pythonConcept: [
+                    "Python Refresher: A dictionary in Python is a collection of key-value pairs. You can access values using their keys (e.g., my_dictionary['my_key']).",
+                    "To check if a key exists in a dictionary, you can use the in operator (e.g., 'my_key' in my_dictionary).",
+                    "Example:",
+                    "```python",
+                    "my_dict = {'city': 'London', 'forest': 'Amazon'}",
+                    "print(my_dict['city'])  # Output: London",
+                    "print('river' in my_dict) # Output: False",
+                    "```"
+                ],
+                tutorial: [
+                    "To solve this challenge, we need to write a Python function that takes a dictionary and a key, and returns True if the key exists in the dictionary, False otherwise.",
+                    "Here's how you can create such a function in Python:",
+                    "```python",
+                    "def check_key(dictionary, key):",
+                    "    return key in dictionary",
+                    "```",
+                    "In this function, dictionary and key are the parameters, and we return True or False using the in operator."
+                ],
+                challenge: "Challenge: Write a Python function check_key(dictionary, key) that takes a dictionary and a key as input, and returns True if the key exists in the dictionary, False otherwise.",
+                choices: [
+                    {
+                        text: "Attempt the decryption.",
+                        action: "pythonChallenge",
+                        code: "",
+                        correctAnswer: function(dictionary, key) { return key in dictionary; },
+                        nextSceneSuccess: "hiddenChamber",
+                        nextSceneFail: "chamberLocked"
+                    },
+                    {
+                        text: "Need a hint? (Sanity -10)",
+                        sanityChange: -10,
+                        nextScene: "hintCipher2"
+                    },
+                    {
+                        text: "Skip this puzzle. (Lose 'Book of Lore')",
+                        requires: "Book of Lore",
+                        action: "removeItem",
+                        item: "Book of Lore",
+                        nextScene: "skipCipher"
+                    }
+                ]
+            },
+            hintCipher2: {
+                story: "Hint: Use the in operator to check if a key exists in a dictionary.",
+                choices: [
+                    { text: "Go back and attempt the decryption.", nextScene: "pythonChallenge2" }
+                ]
+            },
+            hiddenChamber: {
+                story: [
+                    "As you solve the riddle, a section of the wall slides open, revealing a hidden chamber.",
+                    "Inside, you find an ancient amulet, pulsing with a faint blue light."
+                ],
+                action: "gainItem",
+                item: "Ancient Amulet",
+                scoreChange: 20,
+                choices: [
+                    { text: "Take the amulet and continue exploring the tower.", nextScene: "searchFloor2" }
+                ]
+            },
+            chamberLocked: {
+                story: "The riddle eludes you. The wall remains solid. You need to think harder.",
+                choices: [
+                    { text: "Try the riddle again.", nextScene: "pythonChallenge2" },
+                    { text: "Continue exploring the floor.", nextScene: "searchFloor2" }
+                ]
+            },
+            searchFloor2: {
+                story: "You search the rest of the second floor, but find no other exits.",
+                choices: [
+                    { text: "Climb the stairs to the next level.", nextScene: "towerFloor3" }
+                ]
+            },
+            towerFloor3: {
+                story: [
+                    "The third floor is shrouded in an eerie silence. The air feels colder here, and the shadows seem deeper.",
+                    "You see a large, ornate door at the far end of the room. It's locked, and a faint humming sound emanates from it."
+                ],
+                choices: [
+                    { text: "Examine the door.", nextScene: "examineDoor" },
+                    { text: "Search the room for clues.", nextScene: "searchFloor3" }
+                ]
+            },
+            examineDoor: {
+                story: [
+                    "As you approach the door, the humming intensifies. The symbols on the door seem to writhe and shift.",
+                    "You touch the door cautiously, and a jolt of energy surges through you. You feel Wikatung's presence, strong and angry.",
+                    "To unlock the door, you need to appease Wikatung. Perhaps using an item in your inventory could help..."
+                ],
+                choices: [
+                    { text: "Use the Ancient Amulet.", action: "useAmulet", requires: "Ancient Amulet", nextSceneSuccess: "doorUnlocked", nextSceneFail: "amuletFails" },
+                    { text: "Try Dark Magic. (Wikatung Anger +50)", action: "useDarkMagicOnDoor", requires: "hasDarkMagic", nextScene: "darkMagicDoor" },
+                    { text: "Search the room for another solution.", nextScene: "searchFloor3" }
+                ]
+            },
+            useAmulet: {
+                story: [
+                    "You hold the Ancient Amulet up to the door. It glows warmly, bathing the room in a soft, blue light."
+                ],
+                action: "checkAmuletSuccess",
+                nextSceneSuccess: "doorUnlocked",
+                nextSceneFail: "amuletFails"
+            },
+            doorUnlocked: {
+                story: [
+                    "The amulet glows brightly, and the humming from the door ceases. The symbols on the door fade, and the lock clicks open.",
+                    "You push the door open cautiously, and a wave of cold air washes over you. You have reached the next level of the tower."
+                ],
+                scoreChange: 30,
+                choices: [
+                    { text: "Enter the next level.", nextScene: "towerFloor4" }
+                ]
+            },
+            amuletFails: {
+                story: [
+                    "You hold the amulet up to the door, but nothing happens. The humming continues, and the symbols glow even brighter.",
+                    "Wikatung is not appeased. You need to find another way."
+                ],
+                choices: [
+                    { text: "Try Dark Magic. (Wikatung Anger +50)", action: "useDarkMagicOnDoor", requires: "hasDarkMagic", nextScene: "darkMagicDoor" },
+                    { text: "Search the room for another solution.", nextScene: "searchFloor3" }
+                ]
+            },
+            darkMagicDoor: {
+                story: [
+                    "You focus your dark magic on the door. The air crackles with energy, and the symbols on the door writhe in response.",
+                    "You can sense Wikatung's resistance, a powerful force pushing back against your magic.",
+                    "You need to concentrate and channel your power carefully. One wrong move could have dire consequences..."
+                ],
+                pythonConcept: [
+                    "Python Refresher: Loops are used to repeat a block of code multiple times.",
+                    "For example, a for loop can be used to iterate through a list of numbers:",
+                    "```python",
+                    "numbers = [1, 2, 3, 4, 5]",
+                    "for number in numbers:",
+                    "    print(number * 2)",
+                    "```",
+                    "This code will print each number in the list multiplied by 2."
+                ],
+                tutorial: [
+                    "To solve this challenge, we need to write a Python function that takes an integer energy and uses a loop to add 1 to the energy value 5 times.",
+                    "Here's how you can create such a function in Python:",
+                    "```python",
+                    "def power_up(energy):",
+                    "    for i in range(5):",
+                    "        energy += 1",
+                    "    return energy",
+                    "```",
+                    "In this function, energy is the parameter, and we use a for loop to increment the energy value 5 times."
+                ],
+                challenge: "Challenge: Write a Python function power_up(energy) that takes an integer energy as input. Inside the function, use a loop to add 1 to the energy value 5 times. Then return the final energy value.",
+                choices: [
+                    {
+                        text: "Attempt to channel your magic (type your code):",
+                        action: "pythonChallenge",
+                        code: "",
+                        correctAnswer: function(energy) {
+                            for (let i = 0; i < 5; i++) {
+                                energy += 1;
+                            }
+                            return energy;
+                        },
+                        nextSceneSuccess: "darkMagicSuccess",
+                        nextSceneFail: "darkMagicFail"
+                    },
+                    {
+                        text: "Need a hint? (Sanity -15)",
+                        sanityChange: -15,
+                        nextScene: "hintDarkMagic"
+                    },
+                    {
+                        text: "Stop using Dark Magic and reconsider your options.",
+                        nextScene: "examineDoor"
+                    }
+                ]
+            },
+            hintDarkMagic: {
+                story: [
+                    "Hint: You'll need to use a for loop and the += operator to increase the energy value inside the loop."
+                ],
+                choices: [
+                    { text: "Go back and try again.", nextScene: "darkMagicDoor" }
+                ]
+            },
+            darkMagicSuccess: {
+                story: [
+                    "You successfully channel your dark magic, overcoming Wikatung's resistance. The door shudders, then swings open with a groan.",
+                    "You feel drained, but victorious. The path to the next level is clear."
+                ],
+                angerChange: 50,
+                scoreChange: 50,
+                choices: [
+                    { text: "Proceed to the next level.", nextScene: "towerFloor4" }
+                ]
+            },
+            darkMagicFail: {
+                story: [
+                    "Your concentration falters, and the flow of dark magic becomes unstable. The symbols on the door flare angrily, and a surge of energy blasts you backwards.",
+                    "You feel a sharp pain as the uncontrolled magic courses through you. Wikatung is furious.",
+                    "Health -30"
+                ],
+                healthChange: -30,
+                angerChange: 50,
+                nextScene: "examineDoor"
+            },
+            searchFloor3: {
+                story: [
+                    "You search the room thoroughly, but find nothing that could help you open the door.",
+                    "You notice, however, a small inscription etched into the base of a nearby statue. It reads: 'Knowledge is power. Seek the library of shadows.'"
+                ],
+                choices: [
+                    { text: "Return to the door.", nextScene: "examineDoor" }
+                ]
+            },
+            towerFloor4: {
+                story: [
+                    "You ascend to the fourth floor. The air is thick with the smell of burning incense.",
+                    "In the center of the room stands a hooded figure, chanting softly."
+                ],
+                choices: [
+                    { text: "Approach the hooded figure.", nextScene: "hoodedFigure" },
+                    { text: "Search the room.", nextScene: "searchFloor4" }
+                ]
+            },
+            hoodedFigure: {
+                story: [
+                    "The hooded figure turns to face you. 'You have come far, adventurer. But your journey is not yet complete.'",
+                    "'To proceed, you must prove your knowledge once more.'"
+                ],
+                choices: [
+                    { text: "Accept the challenge.", nextScene: "pythonChallenge3" }
+                ]
+            },
+            searchFloor4: {
+                story: [
+                    "You search the room and find a dusty tome with a riddle inscribed on its cover.",
+                    "'I speak without a mouth and hear without ears. I have no body, but I come alive with the wind. What am I?'"
+                ],
+                choices: [
+                    { text: "Attempt to solve the riddle.", nextScene: "pythonChallenge3" }
+                ]
+            },
+            pythonChallenge3: {
+                story: "You ponder the riddle, realizing it holds the key to your progress.",
+                pythonConcept: [
+                    "Python Refresher: Lists are ordered collections of items. You can access items by their index.",
+                    "You can also use list methods to manipulate the list, such as append() to add an item.",
+                    "Example:",
+                    "```python",
+                    "my_list = [1, 2, 3]",
+                    "my_list.append(4)",
+                    "print(my_list)  # Output: [1, 2, 3, 4]",
+                    "```"
+                ],
+                tutorial: [
+                    "To solve this challenge, we need to write a Python function that takes a list and an item, and appends the item to the list.",
+                    "Here's how you can create such a function in Python:",
+                    "```python",
+                    "def add_to_list(my_list, item):",
+                    "    my_list.append(item)",
+                    "    return my_list",
+                    "```",
+                    "In this function, my_list and item are the parameters, and we use the append() method to add item to my_list."
+                ],
+                challenge: "Challenge: Write a Python function add_to_list(my_list, item) that takes a list and an item as input, appends the item to the list, and returns the updated list.",
+                choices: [
+                    {
+                        text: "Attempt the challenge (type your code):",
+                        action: "pythonChallenge",
+                        code: "",
+                        correctAnswer: function(my_list, item) {
+                            my_list.push(item);
+                            return my_list;
+                        },
+                        nextSceneSuccess: "challengeSuccess3",
+                        nextSceneFail: "challengeFail3"
+                    },
+                    {
+                        text: "Need a hint? (Sanity -15)",
+                        sanityChange: -15,
+                        nextScene: "hintChallenge3"
+                    },
+                    {
+                        text: "Give up and return.", 
+                        nextScene: "hoodedFigure"
+                    }
+                ]
+            },
+            hintChallenge3: {
+                story: [
+                    "Hint: Use the append() method to add the item to the list."
+                ],
+                choices: [
+                    { text: "Go back and try again.", nextScene: "pythonChallenge3" }
+                ]
+            },
+            challengeSuccess3: {
+                story: [
+                    "You solve the riddle, and the hooded figure nods in approval.",
+                    "'You have proven your knowledge. You may proceed to the next level.'"
+                ],
+                xpChange: 100,
+                scoreChange: 100,
+                choices: [
+                    { text: "Ascend to the next level.", nextScene: "towerFloor5" }
+                ]
+            },
+            challengeFail3: {
+                story: [
+                    "You struggle with the riddle, but cannot solve it. The hooded figure shakes his head.",
+                    "'You are not yet ready. Come back when you have gained more knowledge.'"
+                ],
+                choices: [
+                    { text: "Return and try again later.", nextScene: "hoodedFigure" }
+                ]
+            },
+            gameOver: {
+                story: [
+                    "You succumb to your wounds... The curse of Wikatung claims another soul.",
+                    "GAME OVER"
+                ],
+                choices: [
+                    { text: "Play Again", nextScene: "characterSelect" }
+                ]
+            }
+        };
+
+        // --- Game Functions ---
+
+        function startGame() {
+            console.log("Welcome to the Tower of Wikatung! Can you break the curse and escape?");
+            displayScene(gameState.currentScene);
+        }
+
+        function displayScene(sceneName) {
+            let scene = scenes[sceneName];
+            document.getElementById("story").innerHTML = scene.story.join("<br><br>");
+            document.getElementById("tutorial").innerHTML = scene.pythonConcept ? scene.pythonConcept.join("<br>") + "<br>" + scene.tutorial.join("<br>") : "";
+            document.getElementById("python-challenge").innerHTML = scene.challenge ? `<strong>Challenge:</strong> ${scene.challenge}` : "";
+
+            let choicesHTML = "";
+            let validChoices = scene.choices.filter(choice => !choice.requires || gameState[choice.requires] || gameState.inventory.includes(choice.requires));
+            validChoices.forEach((choice, i) => {
+                choicesHTML += `<button onclick="handleChoice(${i})">${choice.text}</button>`;
+            });
+            document.getElementById("choices").innerHTML = choicesHTML;
+
+            updateScore();
+        }
+
+        function handleChoice(choiceIndex) {
+            let scene = scenes[gameState.currentScene];
+            let choice = scene.choices.filter(choice => !choice.requires || gameState[choice.requires] || gameState.inventory.includes(choice.requires))[choiceIndex];
+
+            if (choice.action) {
+                handleAction(choice.action, choice);
+            } else {
+                updateGameState(choice);
+                gameState.currentScene = choice.nextScene;
+                displayScene(gameState.currentScene);
+            }
+        }
+
+        function handleAction(action, choice) {
+            switch (action) {
+                case "chooseCharacter":
+                    chooseCharacter(choice);
+                    break;
+                case "strengthCheck":
+                    strengthCheck(choice);
+                    break;
+                case "gainItem":
+                case "gainItems":
+                    gainItems(choice);
+                    break;
+                case "combat":
+                    combat(choice);
+                    break;
+                case "pythonChallenge":
+                    pythonChallenge(choice);
+                    break;
+                case "removeItem":
+                    removeItem(choice);
+                    break;
+                case "checkAmuletSuccess":
+                    checkAmletSuccess(choice);
+                    break;
+                case "useDarkMagicOnDoor":
+                    useDarkMagicOnDoor(choice);
+                    break;
+                default:
+                    console.error("Unknown action:", action);
+            }
+        }
+
+        function chooseCharacter(choice) {
+            let selectedCharacter = characters[choice.character];
+            gameState.health = selectedCharacter.health;
+            gameState.sanity = selectedCharacter.sanity;
+            gameState.hasDarkMagic = selectedCharacter.hasDarkMagic || false;
+            gameState.inventory = selectedCharacter.inventory || [];
+            console.log("You have chosen the " + choice.character + "!");
+            gameState.currentScene = choice.nextScene;
+            displayScene(gameState.currentScene);
+        }
+
+        function strengthCheck(choice) {
+            if (Math.random() < 0.7) {
+                console.log("You manage to move the rubble!");
+                updateGameState(choice);
+                gameState.currentScene = choice.nextSceneSuccess;
+            } else {
+                console.log("You're not strong enough!");
+                gameState.currentScene = choice.nextSceneFail;
+            }
+            displayScene(gameState.currentScene);
+        }
+
+        function gainItems(choice) {
+            let items = Array.isArray(choice.items) ? choice.items : [choice.items];
+            gameState.inventory.push(...items);
+            console.log("You found: " + items.join(", ") + "!");
+            if (items.includes("Lantern")) {
+                gameState.hasLantern = true;
+            }
+            updateGameState(choice);
+            gameState.currentScene = choice.nextScene;
+            displayScene(gameState.currentScene);
+        }
+
+        function combat(choice) {
+            console.log("You are fighting a " + choice.enemy + "!");
+            if (Math.random() < 0.8) {
+                console.log("You defeated the " + choice.enemy + "!");
+                updateGameState(choice);
+                gameState.currentScene = choice.nextSceneSuccess;
+            } else {
+                console.log("The " + choice.enemy + " defeated you!");
+                gameState.health -= 30;
+                checkHealth();
+                gameState.currentScene = choice.nextSceneFail || "gameOver";
+            }
+            displayScene(gameState.currentScene);
+        }
+
+        function pythonChallenge(choice) {
+            let playerCode = prompt("Enter your Python code:");
+            try {
+                let func = eval(playerCode);
+                let testInput = []; // Provide appropriate test input based on the challenge
+                if (func(...testInput) === choice.correctAnswer(...testInput)) {
+                    console.log("Correct! You progress.");
+                    updateGameState(choice);
+                    gameState.currentScene = choice.nextSceneSuccess;
+                } else {
+                    console.log("Incorrect. Try again!");
+                    gameState.currentScene = choice.nextSceneFail;
+                }
+            } catch (error) {
+                console.log("Error in your code:", error);
+                gameState.currentScene = choice.nextSceneFail;
+            }
+            displayScene(gameState.currentScene);
+        }
+
+        function removeItem(choice) {
+            let itemIndex = gameState.inventory.indexOf(choice.item);
+            if (itemIndex !== -1) {
+                gameState.inventory.splice(itemIndex, 1);
+                console.log("You have lost the '" + choice.item + "'.");
+            }
+            updateGameState(choice);
+            gameState.currentScene = choice.nextScene;
+            displayScene(gameState.currentScene);
+        }
+
+        function checkAmuletSuccess(choice) {
+            if (gameState.wikatungAnger > 50) {
+                console.log("The amulet's power is not enough to soothe Wikatung's rage! The door remains locked.");
+                gameState.currentScene = choice.nextSceneFail;
+            } else {
+                console.log("The amulet calms Wikatung's anger. The door unlocks.");
+                gameState.currentScene = choice.nextSceneSuccess;
+            }
+            displayScene(gameState.currentScene);
+        }
+
+        function useDarkMagicOnDoor(choice) {
+            console.log("You focus your dark magic on the door...");
+            gameState.wikatungAnger += choice.angerChange;
+            if (gameState.wikatungAnger >= 100) {
+                console.log("Wikatung's fury reaches its peak! The tower begins to crumble around you...");
+                gameState.currentScene = "gameOver";
+            } else if (Math.random() < 0.6) {
+                console.log("The door creaks open, succumbing to your dark magic.");
+                gameState.currentScene = "towerFloor4";
+            } else {
+                console.log("The door resists your magic. You feel Wikatung's anger growing...");
+                gameState.currentScene = "examineDoor";
+            }
+            displayScene(gameState.currentScene);
+        }
+
+        function updateGameState(choice) {
+            gameState.xp += choice.xpChange || 0;
+            gameState.health += choice.healthChange || 0;
+            gameState.sanity += choice.sanityChange || 0;
+            gameState.wikatungAnger += choice.angerChange || 0;
+            gameState.score += choice.scoreChange || 0;
+
+            checkHealth();
+            checkSanity();
+        }
+
+        function checkHealth() {
+            if (gameState.health <= 0) {
+                gameState.currentScene = "gameOver";
+                console.log("You have run out of health!");
+            }
+        }
+
+        function checkSanity() {
+            if (gameState.sanity <= 0) {
+                console.log("Your sanity has shattered! You are overwhelmed by the darkness...");
+                // Implement consequences for low sanity
+            }
+        }
+
+        function updateScore() {
+            document.getElementById("score").innerHTML = `Score: ${gameState.score}`;
+        }
+    </script>
+</body>
+</html>
